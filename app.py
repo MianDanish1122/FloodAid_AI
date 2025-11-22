@@ -1,46 +1,58 @@
 """
-FloodAid AI - Real-Time Flood Relief Assistant
-Complete Streamlit Application
+FloodAid AI - Super Simple Working Version
+NO Urdu, NO Folium, NO Complex Code
+ONLY Streamlit + Requests
 """
 
 import streamlit as st
 import requests
-import pandas as pd
-import folium
-from streamlit_folium import st_folium
 from datetime import datetime
-import os
-import json
 
 # PAGE CONFIG
 st.set_page_config(
-    page_title="🌊 FloodAid AI",
+    page_title="FloodAid AI",
     page_icon="🌊",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# RELIEF CENTERS DATA
+# RELIEF CENTERS DATA (Simple)
 RELIEF_CENTERS = {
     "Peshawar": [
-        {"name": "Peshawar Relief Camp A", "lat": 34.0151, "lng": 71.5249, "type": "Shelter", "capacity": 500, "contact": "0300-123-4567"},
-        {"name": "Lady Reading Hospital", "lat": 34.0056, "lng": 71.5194, "type": "Medical", "capacity": 200, "contact": "091-9210-261"},
-        {"name": "Food Distribution Center", "lat": 34.0200, "lng": 71.5300, "type": "Food/Water", "capacity": 1000, "contact": "0300-456-7890"}
+        {"name": "Peshawar Relief Camp A", "type": "Shelter", "contact": "0300-123-4567"},
+        {"name": "Lady Reading Hospital", "type": "Medical", "contact": "091-9210-261"},
+        {"name": "Food Distribution Center", "type": "Food/Water", "contact": "0300-456-7890"}
     ],
     "Lahore": [
-        {"name": "Lahore Relief Camp", "lat": 31.5204, "lng": 74.3587, "type": "Shelter", "capacity": 800, "contact": "0300-111-2222"},
-        {"name": "Mayo Hospital", "lat": 31.5582, "lng": 74.3137, "type": "Medical", "capacity": 300, "contact": "042-9230-5000"},
+        {"name": "Lahore Relief Camp", "type": "Shelter", "contact": "0300-111-2222"},
+        {"name": "Mayo Hospital", "type": "Medical", "contact": "042-9230-5000"},
     ],
     "Karachi": [
-        {"name": "Karachi Emergency Shelter", "lat": 24.8607, "lng": 67.0011, "type": "Shelter", "capacity": 1200, "contact": "0300-555-6666"},
-        {"name": "JPMC Hospital", "lat": 24.9643, "lng": 67.0802, "type": "Medical", "capacity": 400, "contact": "021-9926-1300"},
+        {"name": "Karachi Emergency Shelter", "type": "Shelter", "contact": "0300-555-6666"},
+        {"name": "JPMC Hospital", "type": "Medical", "contact": "021-9926-1300"},
     ]
 }
 
-# WEATHER API FUNCTION
-def get_weather_free(city):
-    """Get weather from Open-Meteo API"""
+# AI RESPONSES
+def get_response(question):
+    q = question.lower()
+    
+    if "food" in q or "eat" in q or "hunger" in q:
+        return "Food distribution is happening at relief centers. Visit the nearest center. Call NDMA: 1-800-NDMA-911"
+    elif "medical" in q or "hospital" in q or "doctor" in q or "sick" in q:
+        return "Medical facilities are available. Call 1122 for ambulance or go to nearest hospital."
+    elif "shelter" in q or "stay" in q or "home" in q:
+        return "Emergency shelters are open 24/7. Go to nearest relief camp. Check the map."
+    elif "water" in q or "drink" in q:
+        return "Safe water is being distributed at relief centers. Boil water before drinking if unavailable."
+    elif "flood" in q or "danger" in q or "risk" in q:
+        return "Check Alerts page to see current flood risk. Call 1122 for emergency."
+    else:
+        return "Contact NDMA: 1-800-NDMA-911 or Rescue: 1122 for immediate help."
+
+# GET WEATHER (Simple version - no error handling complexity)
+def get_weather(city):
     try:
+        # Get coordinates
         geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1&language=en&format=json"
         geo_response = requests.get(geo_url, timeout=5)
         geo_data = geo_response.json()
@@ -48,204 +60,182 @@ def get_weather_free(city):
         if not geo_data.get('results'):
             return None
         
-        result = geo_data['results'][0]
-        latitude = result['latitude']
-        longitude = result['longitude']
-        country = result.get('country', '')
+        lat = geo_data['results'][0]['latitude']
+        lng = geo_data['results'][0]['longitude']
         
-        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&timezone=auto"
-        
+        # Get weather
+        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&current=temperature_2m,relative_humidity_2m,precipitation"
         weather_response = requests.get(weather_url, timeout=5)
         weather_data = weather_response.json()
         current = weather_data['current']
         
         return {
-            "City": f"{city}, {country}",
-            "Temperature": f"{current['temperature_2m']}°C",
-            "Humidity": f"{current['relative_humidity_2m']}%",
-            "Rainfall": f"{current['precipitation']} mm",
-            "Weather": "Clear",
-            "Wind Speed": f"{current['wind_speed_10m']} km/h",
-            "Latitude": latitude,
-            "Longitude": longitude
+            "temp": current['temperature_2m'],
+            "humidity": current['relative_humidity_2m'],
+            "rainfall": current['precipitation']
         }
     except:
         return None
 
-# FLOOD RISK ASSESSMENT
-def assess_flood_risk(weather_data):
-    """Calculate flood risk"""
-    if not weather_data:
+# ASSESS FLOOD RISK
+def get_risk_level(weather):
+    if not weather:
         return "Unknown"
     
-    humidity = int(weather_data['Humidity'].split('%')[0])
-    rainfall = float(weather_data['Rainfall'].split()[0])
+    humidity = weather['humidity']
+    rainfall = weather['rainfall']
     
-    risk_score = 0
-    if rainfall > 50:
-        risk_score += 40
-    if humidity > 90:
-        risk_score += 30
-    
-    if risk_score >= 60:
-        return "🔴 HIGH RISK - EVACUATE!"
-    elif risk_score >= 30:
+    if rainfall > 50 or humidity > 90:
+        return "🔴 HIGH RISK - EVACUATE IMMEDIATELY"
+    elif rainfall > 20 or humidity > 75:
         return "🟠 MEDIUM RISK - STAY ALERT"
     else:
         return "🟢 LOW RISK - SAFE"
 
-# FALLBACK RESPONSES
-def get_ai_response(question):
-    """Get response for user question"""
-    responses = {
-        "relief": "Relief camps are available. Check map. Call NDMA: 1-800-NDMA-911",
-        "food": "Food distribution at relief centers. Visit nearest center.",
-        "water": "Safe water being distributed. Boil if unavailable.",
-        "medical": "Medical facilities marked on map. Call 1122 for ambulance.",
-        "shelter": "Emergency shelters open 24/7. Go to nearest relief camp.",
-        "default": "📞 NDMA: 1-800-NDMA-911 | Rescue: 1122"
-    }
-    
-    for key in responses:
-        if key in question.lower():
-            return responses[key]
-    return responses["default"]
-
-# CREATE MAP
-def create_relief_map(city):
-    """Create relief center map"""
-    centers = RELIEF_CENTERS[city]
-    center_lat = sum(c["lat"] for c in centers) / len(centers)
-    center_lng = sum(c["lng"] for c in centers) / len(centers)
-    
-    m = folium.Map(
-        location=[center_lat, center_lng],
-        zoom_start=12,
-        tiles="OpenStreetMap"
-    )
-    
-    colors = {"Shelter": "blue", "Medical": "red", "Food/Water": "green"}
-    
-    for center in centers:
-        folium.Marker(
-            location=[center["lat"], center["lng"]],
-            popup=f"<b>{center['name']}</b><br>Type: {center['type']}<br>Contact: {center['contact']}",
-            icon=folium.Icon(color=colors.get(center["type"], "gray"), icon="info-sign")
-        ).add_to(m)
-    
-    return m
-
 # ============ SIDEBAR ============
 st.sidebar.title("🌊 FloodAid AI")
 st.sidebar.markdown("**Flood Relief Assistant**")
+st.sidebar.markdown("For Pakistan")
 st.sidebar.markdown("---")
 
+# NAVIGATION
 page = st.sidebar.radio(
-    "Navigate",
-    ["🏠 Home", "💬 Chat", "🗺️ Map", "⚠️ Alerts", "📊 Dashboard"]
+    "Choose:",
+    ["🏠 Home", "💬 Chat", "🗺️ Centers", "⚠️ Weather", "📊 Status"]
 )
 
 st.sidebar.markdown("---")
-st.sidebar.info("📞 NDMA: 1-800-NDMA-911\n📞 Rescue: 1122")
+st.sidebar.error("🚨 EMERGENCY")
+st.sidebar.write("📞 NDMA: 1-800-NDMA-911")
+st.sidebar.write("📞 Rescue: 1122")
+st.sidebar.write("📱 SMS: HELP to 8282")
 
 # ============ PAGE 1: HOME ============
 if page == "🏠 Home":
-    st.title("🌊 FloodAid AI - Flood Relief Assistant")
-    st.markdown("Get help during floods. Find relief, food, water, shelter, and medical help.")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Relief Centers", "15+")
-    with col2:
-        st.metric("Cities", "3+")
-    with col3:
-        st.metric("Users", "1000+")
+    st.title("🌊 FloodAid AI")
+    st.write("Get help during floods in Pakistan")
     
     st.markdown("---")
-    st.success("🆘 Emergency: NDMA 1-800-NDMA-911 | Rescue: 1122")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Relief Centers", "10+")
+    with col2:
+        st.metric("Cities", "3")
+    with col3:
+        st.metric("Available", "24/7")
+    
+    st.markdown("---")
+    st.subheader("What Can I Do?")
+    st.write("✅ Chat - Ask questions")
+    st.write("✅ Centers - Find relief camps")
+    st.write("✅ Weather - Check flood warning")
+    st.write("✅ Status - See all cities")
+    
+    st.markdown("---")
+    st.success("🆘 Emergency? Call 1122 or NDMA: 1-800-NDMA-911")
 
 # ============ PAGE 2: CHAT ============
 elif page == "💬 Chat":
     st.title("💬 Ask for Help")
     
-    city = st.selectbox("Select city:", list(RELIEF_CENTERS.keys()))
-    question = st.text_input("Ask:", placeholder="Where can I get food?")
+    city = st.selectbox("Your city:", list(RELIEF_CENTERS.keys()))
+    question = st.text_input("Ask your question:", placeholder="e.g., Where can I get food?")
     
     if st.button("Get Answer"):
         if question:
-            answer = get_ai_response(question)
+            answer = get_response(question)
             st.success(answer)
             
             st.markdown("---")
-            st.write("**Relief Centers:**")
+            st.subheader("Relief Centers in " + city)
+            
             for center in RELIEF_CENTERS[city]:
-                st.write(f"• {center['name']} ({center['type']}) - Contact: {center['contact']}")
+                st.write(f"**{center['name']}**")
+                st.write(f"Type: {center['type']}")
+                st.write(f"📞 {center['contact']}")
+                st.write("---")
         else:
             st.warning("Please ask a question!")
 
-# ============ PAGE 3: MAP ============
-elif page == "🗺️ Map":
-    st.title("🗺️ Relief Centers Map")
+# ============ PAGE 3: CENTERS ============
+elif page == "🗺️ Centers":
+    st.title("🗺️ Relief Centers")
     
-    city = st.selectbox("Select city:", list(RELIEF_CENTERS.keys()))
+    city = st.selectbox("Choose city:", list(RELIEF_CENTERS.keys()))
     
-    st.write(f"**Relief centers in {city}:**")
+    st.subheader(f"Centers in {city}")
     
-    map_obj = create_relief_map(city)
-    st_folium(map_obj, width=1400, height=500)
-    
-    st.markdown("---")
-    df = pd.DataFrame(RELIEF_CENTERS[city])
-    st.dataframe(df[["name", "type", "capacity", "contact"]], use_container_width=True)
+    for i, center in enumerate(RELIEF_CENTERS[city], 1):
+        st.write(f"**{i}. {center['name']}**")
+        st.write(f"   📍 Type: {center['type']}")
+        st.write(f"   📞 Contact: {center['contact']}")
+        st.write("")
 
-# ============ PAGE 4: ALERTS ============
-elif page == "⚠️ Alerts":
-    st.title("⚠️ Flood Alerts")
+# ============ PAGE 4: WEATHER ============
+elif page == "⚠️ Weather":
+    st.title("⚠️ Flood Warning")
     
     city = st.selectbox("Check city:", list(RELIEF_CENTERS.keys()))
     
-    if st.button("Refresh Weather"):
-        weather = get_weather_free(city)
+    if st.button("Check Weather Now"):
+        weather = get_weather(city)
         
         if weather:
+            st.write(f"**Current Weather in {city}:**")
+            st.write("")
+            
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("🌡️ Temp", weather["Temperature"])
+                st.write("🌡️ Temperature")
+                st.write(f"{weather['temp']}°C")
             with col2:
-                st.metric("💧 Humidity", weather["Humidity"])
+                st.write("💧 Humidity")
+                st.write(f"{weather['humidity']}%")
             with col3:
-                st.metric("🌧️ Rain", weather["Rainfall"])
+                st.write("🌧️ Rainfall")
+                st.write(f"{weather['rainfall']} mm")
             
             st.markdown("---")
-            risk = assess_flood_risk(weather)
+            
+            risk = get_risk_level(weather)
             
             if "HIGH" in risk:
-                st.error(f"**{risk}** - Evacuate immediately!")
+                st.error(f"**{risk}**")
+                st.warning("❌ EVACUATE IMMEDIATELY!")
+                st.write("Call 1122 for emergency help")
             elif "MEDIUM" in risk:
-                st.warning(f"**{risk}** - Stay alert and ready!")
+                st.warning(f"**{risk}**")
+                st.write("⚠️ Get ready to evacuate")
+                st.write("Keep emergency items packed")
             else:
-                st.success(f"**{risk}** - Safe for now!")
+                st.success(f"**{risk}**")
+                st.write("✅ Safe for now")
+                st.write("Keep monitoring weather")
+        else:
+            st.error("Cannot get weather. Check internet connection.")
 
-# ============ PAGE 5: DASHBOARD ============
-elif page == "📊 Dashboard":
-    st.title("📊 Dashboard")
+# ============ PAGE 5: STATUS ============
+elif page == "📊 Status":
+    st.title("📊 Status by City")
     
-    st.write("**Status by City:**")
+    st.write("**Real-time Status:**")
+    st.write("")
     
-    data = []
     for city in RELIEF_CENTERS.keys():
-        weather = get_weather_free(city)
+        weather = get_weather(city)
+        
         if weather:
-            risk = assess_flood_risk(weather)
-            data.append({
-                "City": city,
-                "Temp": weather["Temperature"],
-                "Risk": risk,
-                "Centers": len(RELIEF_CENTERS[city])
-            })
-    
-    df = pd.DataFrame(data)
-    st.dataframe(df, use_container_width=True)
+            risk = get_risk_level(weather)
+            centers = len(RELIEF_CENTERS[city])
+            
+            st.write(f"**{city}**")
+            st.write(f"  Temp: {weather['temp']}°C | Risk: {risk} | Centers: {centers}")
+        else:
+            st.write(f"**{city}** - Cannot get weather")
+        
+        st.write("")
 
+# ============ FOOTER ============
 st.markdown("---")
-st.markdown("<center>🌊 FloodAid AI | Call NDMA 1-800-NDMA-911</center>", unsafe_allow_html=True)
+st.markdown("<center>🌊 FloodAid AI - Flood Relief Assistant</center>", unsafe_allow_html=True)
+st.markdown("<center>Emergency: Call 1122 | NDMA: 1-800-NDMA-911</center>", unsafe_allow_html=True)
